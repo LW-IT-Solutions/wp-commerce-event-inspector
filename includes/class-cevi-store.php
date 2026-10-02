@@ -251,6 +251,16 @@ class CEVI_Store {
 				}
 			)
 		);
+		$status = isset( $first['order']['status'] ) ? $first['order']['status'] : '';
+		if ( ! $purchases && in_array( $status, array( 'failed', 'cancelled', 'pending' ), true ) ) {
+			// Without a completed payment, no purchase is the right result.
+			return array(
+				'status'    => 'ok',
+				'checks'    => array( array( 'ok', 'no_purchase_unpaid', array( $status ) ) ),
+				'purchases' => 0,
+				'views'     => count( $list ),
+			);
+		}
 		if ( ! $purchases ) {
 			return array(
 				'status'    => 'missing',
@@ -306,6 +316,9 @@ class CEVI_Store {
 			case 'status_pending':
 				/* translators: %s: order status. */
 				return sprintf( __( 'purchase was pushed while the order status was "%s"; the payment was not confirmed yet.', 'commerce-event-inspector' ), wc_get_order_status_name( $d[0] ) );
+			case 'no_purchase_unpaid':
+				/* translators: %s: order status. */
+				return sprintf( __( 'No purchase was pushed while the order status was "%s". That is right for an order without a completed payment.', 'commerce-event-inspector' ), wc_get_order_status_name( $d[0] ) );
 			case 'items_cut':
 				/* translators: 1: number of items compared, 2: number of items in the event. */
 				return sprintf( __( 'Only the first %1$d of %2$d items were compared.', 'commerce-event-inspector' ), $d[0], $d[1] );
