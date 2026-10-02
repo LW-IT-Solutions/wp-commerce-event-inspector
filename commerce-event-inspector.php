@@ -307,7 +307,7 @@ function cevi_admin_page() {
 					<input type="checkbox" name="cevi_record" value="1" <?php checked( $settings['record'] ); ?>>
 					<strong><?php esc_html_e( 'Check purchase events on the order confirmation page', 'commerce-event-inspector' ); ?></strong>
 				</label><br>
-				<span class="cevi-muted"><?php esc_html_e( 'When a customer sees the order confirmation, a small script reads the e-commerce events on that page and sends them to this site, where they are stored with the order. No cookies, no requests to other services; only event names, IDs, amounts, currencies and item IDs are kept.', 'commerce-event-inspector' ); ?></span>
+				<span class="cevi-muted"><?php esc_html_e( 'When a customer sees the order confirmation, a small script reads the e-commerce events on that page and sends them to this site, where they are stored with the order. No cookies, no requests to other services; only event names, transaction IDs, amounts, currencies and the IDs, names, prices and quantities of the items are kept.', 'commerce-event-inspector' ); ?></span>
 			</p>
 			<p>
 				<label>
@@ -327,10 +327,13 @@ function cevi_admin_page() {
 				<?php
 				echo esc_html(
 					sprintf(
-						/* translators: 1: date, 2: number of orders, 3: matching, 4: with notes, 5: not matching, 6: without purchase event, 7: not observed. */
-						__( '%2$d orders placed since %1$s or observed since then. %3$d match, %4$d match with notes, %5$d do not match, %6$d without purchase event, %7$d not observed.', 'commerce-event-inspector' ),
+						/* translators: 1: date, 2: number of orders. */
+						_n( '%2$d order placed since %1$s or observed since then.', '%2$d orders placed since %1$s or observed since then.', count( $rows ), 'commerce-event-inspector' ),
 						wp_date( get_option( 'date_format' ) . ' ' . get_option( 'time_format' ), $settings['since'] ),
-						count( $rows ),
+						count( $rows )
+					) . ' ' . sprintf(
+						/* translators: 1: matching, 2: with notes, 3: not matching, 4: without purchase event, 5: not observed. */
+						__( 'Matching: %1$d, with notes: %2$d, not matching: %3$d, without purchase event: %4$d, not observed: %5$d.', 'commerce-event-inspector' ),
 						$count['ok'],
 						$count['warn'],
 						$count['fail'],
@@ -424,6 +427,6 @@ function cevi_privacy_text() {
 	}
 	wp_add_privacy_policy_content(
 		__( 'Commerce Event Inspector', 'commerce-event-inspector' ),
-		'<p>' . esc_html__( 'When checking of purchase events is switched on, the order confirmation page reads the analytics events this site prepares for the order and sends them to this site. They are stored with the order: event names, transaction ID, value, currency and the IDs, prices and quantities of the items. No cookies are set and nothing is sent to other services. The data is deleted with the order or when the plugin is uninstalled.', 'commerce-event-inspector' ) . '</p>'
+		'<p>' . esc_html__( 'When checking of purchase events is switched on, the order confirmation page reads the analytics events this site prepares for the order and sends them to this site. They are stored with the order: event names, transaction ID, value, currency and the IDs, names, prices and quantities of the items. No cookies are set and nothing is sent to other services. The data is deleted with the order or when the plugin is uninstalled.', 'commerce-event-inspector' ) . '</p>'
 	);
 }

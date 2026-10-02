@@ -309,6 +309,10 @@
         const res = checks(n);
         if (n.name === 'purchase' && purchases > 1) {
             res.unshift(['fail', sprintf(T.duplicate, purchases)]);
+            // The closing "no problem found" no longer holds once the page pushed purchase twice.
+            if (res[res.length - 1][1] === T.allOk) {
+                res.pop();
+            }
         }
         const rec = {name: n.name, meta: n.source + (n.list && n.list !== 'dataLayer' ? ' · ' + n.list : '') + (n.value !== null ? ' · ' + fmt(n.value) + ' ' + n.currency : ''), lines: res};
         shown.push(rec);
