@@ -1,0 +1,24 @@
+.cevi-wrap { max-width: 1200px; }
+.cevi-wrap > p, .cevi-wrap form p { max-width: 90ch; }
+.cevi-muted { color: #646970; }
+.cevi-table { overflow-x: auto; }
+.cevi-table td { vertical-align: top; overflow-wrap: anywhere; }
+.cevi-table th:nth-child(1) { width: 16%; }
+.cevi-table th:nth-child(2) { width: 12%; }
+.cevi-table th:nth-child(3) { width: 16%; }
+.cevi-checks { margin: 0; padding: 0; list-style: none; }
+.cevi-checks li { position: relative; margin: 0 0 3px; padding-left: 16px; }
+.cevi-checks li::before { position: absolute; left: 0; font-weight: 700; }
+.cevi-checks .cevi-ok::before { content: "\2713"; color: #00731f; }
+.cevi-checks .cevi-warn::before { content: "!"; color: #996800; }
+.cevi-checks .cevi-fail::before { content: "\2717"; color: #b32d2e; }
+.cevi-badge { display: inline-block; padding: 1px 8px; border-radius: 10px; font-size: 12px; line-height: 20px; white-space: nowrap; background: #f0f0f1; color: #3c434a; }
+.cevi-badge-ok { background: #edfaef; color: #00731f; }
+.cevi-badge-warn { background: #fcf9e8; color: #996800; }
+.cevi-badge-fail, .cevi-badge-missing { background: #fcf0f1; color: #b32d2e; }
+@media screen and (max-width: 782px) {
+	.cevi-table thead { display: none; }
+	.cevi-table td { display: block; width: auto; padding-top: 4px; padding-bottom: 4px; }
+	.cevi-table td:first-child { padding-top: 12px; }
+	.cevi-table td:last-child { padding-bottom: 12px; }
+}

@@ -1,0 +1,23 @@
+.cevi-panel { position: fixed; right: 16px; bottom: 16px; z-index: 999999; width: 380px; max-width: calc(100vw - 32px); max-height: 60vh; display: flex; flex-direction: column; background: #fff; color: #1d2327; border: 1px solid #c3c4c7; border-radius: 6px; box-shadow: 0 6px 24px rgba(0, 0, 0, .18); font: 13px/1.45 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; text-align: left; }
+.cevi-panel * { box-sizing: border-box; }
+.cevi-bar { display: flex; justify-content: space-between; align-items: center; width: 100%; margin: 0; padding: 8px 12px; border: 0; border-radius: 6px 6px 0 0; background: #1d2327; color: #fff; font: 600 13px/1.4 inherit; cursor: pointer; text-align: left; }
+.cevi-count { min-width: 22px; padding: 0 6px; border-radius: 10px; background: #2271b1; text-align: center; }
+.cevi-body { overflow-y: auto; padding: 8px 12px 10px; }
+.cevi-closed .cevi-body { display: none; }
+.cevi-closed .cevi-bar { border-radius: 6px; }
+.cevi-hint { margin: 0 0 6px; color: #646970; font-size: 12px; }
+.cevi-list { margin: 0; padding: 0; list-style: none; }
+.cevi-list > li { margin: 0; padding: 6px 0; border-top: 1px solid #f0f0f1; }
+.cevi-name { font-weight: 600; font-family: Consolas, Monaco, monospace; }
+.cevi-source { margin-left: 8px; color: #646970; font-weight: 400; font-family: inherit; font-size: 12px; }
+.cevi-list ul { margin: 4px 0 0; padding: 0; list-style: none; }
+.cevi-list ul li { position: relative; margin: 2px 0; padding-left: 16px; overflow-wrap: anywhere; }
+.cevi-list ul li::before { position: absolute; left: 0; font-weight: 700; }
+.cevi-ok::before { content: "\2713"; color: #00731f; }
+.cevi-warn::before { content: "!"; color: #996800; }
+.cevi-fail::before { content: "\2717"; color: #b32d2e; }
+.cevi-fail { color: #b32d2e; }
+.cevi-none { margin: 4px 0 0; color: #646970; font-size: 12px; }
+.cevi-panel:not(.cevi-empty) .cevi-none { display: none; }
+.cevi-prev { margin: 10px 0 2px; padding-top: 6px; border-top: 2px solid #f0f0f1; color: #646970; font-size: 12px; overflow-wrap: anywhere; }
+.cevi-prev-list { opacity: .8; }
