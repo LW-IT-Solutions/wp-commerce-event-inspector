@@ -364,6 +364,8 @@
         });
         panel.appendChild(bar);
         const body = el('div', 'cevi-body');
+        body.id = 'cevi-panel-body';
+        bar.setAttribute('aria-controls', body.id);
         body.appendChild(el('p', 'cevi-hint', C.context ? T.context[C.context.type] : T.noContext));
         listEl = el('ol', 'cevi-list');
         body.appendChild(listEl);

@@ -21,3 +21,21 @@
 .cevi-panel:not(.cevi-empty) .cevi-none { display: none; }
 .cevi-prev { margin: 10px 0 2px; padding-top: 6px; border-top: 2px solid #f0f0f1; color: #646970; font-size: 12px; overflow-wrap: anywhere; }
 .cevi-prev-list { opacity: .8; }
+.cevi-bar:focus-visible { outline: 3px solid #72aee6; outline-offset: -3px; }
+.cevi-bar::after { content: ""; width: 8px; height: 8px; margin-left: 8px; border-right: 2px solid currentColor; border-bottom: 2px solid currentColor; transform: rotate(45deg); }
+.cevi-closed .cevi-bar::after { transform: rotate(-135deg); }
+.cevi-bar > span:first-child { flex: 1 1 auto; }
+.cevi-bar { min-height: 40px; gap: 8px; }
+@media (prefers-color-scheme: dark) {
+	.cevi-panel { background: #1d2327; color: #f0f0f1; border-color: #50575e; box-shadow: 0 6px 24px rgba(0, 0, 0, .5); }
+	.cevi-bar { background: #101517; }
+	.cevi-hint, .cevi-none, .cevi-source, .cevi-prev { color: #a7aaad; }
+	.cevi-list > li { border-top-color: #3c434a; }
+	.cevi-prev { border-top-color: #3c434a; }
+	.cevi-ok::before { color: #68de7c; }
+	.cevi-warn::before { color: #f2d675; }
+	.cevi-fail, .cevi-fail::before { color: #ff8085; }
+}
+@media (prefers-reduced-motion: reduce) {
+	.cevi-bar::after { transition: none; }
+}

@@ -4,7 +4,7 @@ Tags: woocommerce, google analytics, ga4, ecommerce tracking, datalayer
 Requires at least: 6.5
 Tested up to: 7.2
 Requires PHP: 7.4
-Stable tag: 0.1.1
+Stable tag: 0.2.0
 License: GPL-2.0-or-later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -80,6 +80,14 @@ orders created in the admin or by payment providers that do not return the custo
 2. The inspector panel on an order confirmation page: the purchase event compared with the order, item by item.
 
 == Changelog ==
+
+= 0.2.0 =
+* Report: a status badge for recording, tiles with the number of orders per result that filter the order list, and a bar with the share of each result.
+* New chart: the value of the purchase event compared with the order total for each observed order, also in the box on the order screen.
+* Order list: results with icons, problems listed first in the checks, and a stacked layout with labels on phones.
+* Settings as switches, the stored data under "What is stored", clearer empty states and the limits in their own box.
+* Inspector panel in the shop: dark colours when the device uses a dark theme, a visible keyboard focus and an open/closed arrow.
+* No change to what is read, stored or sent.
 
 = 0.1.1 =
 * The observation endpoint checks recording, order, order key and order age in its permission check and declares its parameters, which are validated and sanitized where they are read.

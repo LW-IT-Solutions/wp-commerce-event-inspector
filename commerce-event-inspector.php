@@ -2,7 +2,7 @@
 /**
  * Plugin Name: Commerce Event Inspector
  * Description: Checks the GA4 e-commerce events your WooCommerce shop pushes against the real orders, cart and products: missing or duplicate purchase events, wrong transaction IDs, values, currencies and items.
- * Version: 0.1.1
+ * Version: 0.2.0
  * Requires at least: 6.5
  * Requires PHP: 7.4
  * Requires Plugins: woocommerce
@@ -21,6 +21,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 define( 'CEVI_FILE', __FILE__ );
+define( 'CEVI_VERSION', '0.2.0' );
 require_once __DIR__ . '/includes/class-cevi-context.php';
 require_once __DIR__ . '/includes/class-cevi-store.php';
 
@@ -76,9 +77,9 @@ function cevi_enqueue() {
 	if ( ! $record && ! cevi_inspector_on() ) {
 		return;
 	}
-	wp_enqueue_script( 'cevi-capture', plugins_url( 'assets/capture.js', CEVI_FILE ), array(), '0.1.1', true );
+	wp_enqueue_script( 'cevi-capture', plugins_url( 'assets/capture.js', CEVI_FILE ), array(), CEVI_VERSION, true );
 	if ( cevi_inspector_on() ) {
-		wp_enqueue_style( 'cevi-inspector', plugins_url( 'assets/inspector.css', CEVI_FILE ), array(), '0.1.1' );
+		wp_enqueue_style( 'cevi-inspector', plugins_url( 'assets/inspector.css', CEVI_FILE ), array(), CEVI_VERSION );
 	}
 }
 
@@ -195,7 +196,18 @@ function cevi_admin_menu() {
 function cevi_admin_assets( $hook ) {
 	$screen = get_current_screen();
 	if ( 'woocommerce_page_commerce-event-inspector' === $hook || ( $screen && in_array( $screen->id, array( 'shop_order', 'woocommerce_page_wc-orders' ), true ) ) ) {
-		wp_enqueue_style( 'cevi-admin', plugins_url( 'assets/admin.css', CEVI_FILE ), array(), '0.1.1' );
+		wp_enqueue_style( 'cevi-admin', plugins_url( 'assets/admin.css', CEVI_FILE ), array( 'dashicons' ), CEVI_VERSION );
+	}
+	if ( 'woocommerce_page_commerce-event-inspector' === $hook ) {
+		wp_enqueue_script( 'cevi-admin', plugins_url( 'assets/admin.js', CEVI_FILE ), array(), CEVI_VERSION, true );
+		wp_localize_script(
+			'cevi-admin',
+			'CEVI_ADMIN',
+			array(
+				/* translators: 1: status name, 2: number of orders. */
+				'shown' => __( 'Only orders with the result "%1$s" are shown (%2$d).', 'commerce-event-inspector' ),
+			)
+		);
 	}
 }
 
@@ -221,7 +233,16 @@ function cevi_status_label( $status ) {
 }
 
 /**
- * Checks of a verdict as list items.
+ * Status badge with icon.
+ *
+ * @param string $status none, missing, ok, warn or fail.
+ */
+function cevi_print_badge( $status ) {
+	echo '<span class="cevi-badge cevi-badge-' . esc_attr( $status ) . '"><span class="dashicons dashicons-' . esc_attr( cevi_status_icon( $status ) ) . '" aria-hidden="true"></span>' . esc_html( cevi_status_label( $status ) ) . '</span>';
+}
+
+/**
+ * Checks of a verdict as list items, problems first.
  *
  * @param array $verdict Verdict.
  */
@@ -230,11 +251,109 @@ function cevi_print_checks( $verdict ) {
 		echo '<p class="cevi-muted">' . esc_html__( 'The order confirmation page has not been viewed while recording was on.', 'commerce-event-inspector' ) . '</p>';
 		return;
 	}
+	$order  = array(
+		'fail' => 0,
+		'warn' => 1,
+		'ok'   => 2,
+	);
+	$checks = array_values( $verdict['checks'] );
+	$keys   = array_keys( $checks );
+	// Stable: within the same level the original order stays.
+	usort(
+		$keys,
+		function ( $a, $b ) use ( $checks, $order ) {
+			$la = isset( $order[ $checks[ $a ][0] ] ) ? $order[ $checks[ $a ][0] ] : 3;
+			$lb = isset( $order[ $checks[ $b ][0] ] ) ? $order[ $checks[ $b ][0] ] : 3;
+			return $la === $lb ? $a - $b : $la - $lb;
+		}
+	);
+	$words = array(
+		'ok'   => __( 'OK', 'commerce-event-inspector' ),
+		'warn' => __( 'Note', 'commerce-event-inspector' ),
+		'fail' => __( 'Problem', 'commerce-event-inspector' ),
+	);
 	echo '<ul class="cevi-checks">';
-	foreach ( $verdict['checks'] as $check ) {
-		echo '<li class="cevi-' . esc_attr( $check[0] ) . '">' . esc_html( CEVI_Store::describe( $check ) ) . '</li>';
+	foreach ( $keys as $k ) {
+		$check = $checks[ $k ];
+		$word  = isset( $words[ $check[0] ] ) ? $words[ $check[0] ] : '';
+		echo '<li class="cevi-' . esc_attr( $check[0] ) . '"><span class="screen-reader-text">' . esc_html( $word ) . ': </span>' . esc_html( CEVI_Store::describe( $check ) ) . '</li>';
 	}
 	echo '</ul>';
+}
+
+/**
+ * Status icons (dashicons) per verdict.
+ *
+ * @param string $status none, missing, ok, warn or fail.
+ * @return string Dashicon name without prefix.
+ */
+function cevi_status_icon( $status ) {
+	$icons = array(
+		'ok'      => 'yes-alt',
+		'warn'    => 'warning',
+		'fail'    => 'dismiss',
+		'missing' => 'minus',
+		'none'    => 'hidden',
+	);
+	return isset( $icons[ $status ] ) ? $icons[ $status ] : 'marker';
+}
+
+/**
+ * Value of the purchase event compared with the order total, from the stored observation
+ * that the verdict uses (first customer view, else the first view).
+ *
+ * @param WC_Order $order Order.
+ * @return array|null total, value (float or null if not a number), raw; null without a purchase event.
+ */
+function cevi_value_gap( $order ) {
+	$list = CEVI_Store::observations( $order );
+	if ( ! $list ) {
+		return null;
+	}
+	$first = $list[0];
+	foreach ( $list as $obs ) {
+		if ( empty( $obs['staff'] ) ) {
+			$first = $obs;
+			break;
+		}
+	}
+	foreach ( (array) $first['events'] as $event ) {
+		if ( isset( $event['name'] ) && 'purchase' === $event['name'] ) {
+			return array(
+				'total' => (float) $order->get_total(),
+				'value' => isset( $event['value'] ) && is_numeric( $event['value'] ) ? (float) $event['value'] : null,
+				'raw'   => isset( $event['value_raw'] ) ? (string) $event['value_raw'] : '',
+			);
+		}
+	}
+	return null;
+}
+
+/**
+ * One bar of the value chart: the difference between event value and order total,
+ * drawn from the middle (left = less, right = more).
+ *
+ * @param array    $gap   Result of cevi_value_gap().
+ * @param WC_Order $order Order.
+ * @param float    $scale Largest difference in per cent (100 = full half width).
+ */
+function cevi_print_gap( $gap, $order, $scale ) {
+	if ( null === $gap['value'] ) {
+		/* translators: %s: value as sent. */
+		echo '<span class="cevi-gap-text cevi-gap-bad">' . esc_html( sprintf( __( 'value "%s" is not a number', 'commerce-event-inspector' ), $gap['raw'] ) ) . '</span>';
+		return;
+	}
+	$diff = $gap['value'] - $gap['total'];
+	$pct  = $gap['total'] > 0 ? $diff / $gap['total'] * 100 : 0;
+	if ( abs( $diff ) < 0.011 ) {
+		echo '<span class="cevi-gap-text cevi-gap-ok">' . esc_html__( 'equals the order total', 'commerce-event-inspector' ) . '</span>';
+		return;
+	}
+	$width = min( 50, abs( $pct ) / max( 1, $scale ) * 50 );
+	$style = ( $diff < 0 ? 'right:50%;' : 'left:50%;' ) . 'width:' . round( max( 1.5, $width ), 1 ) . '%';
+	$sign  = $diff < 0 ? '−' : '+';
+	echo '<span class="cevi-gap-track" aria-hidden="true"><span class="cevi-gap-bar ' . esc_attr( $diff < 0 ? 'is-less' : 'is-more' ) . '" style="' . esc_attr( $style ) . '"></span></span>';
+	echo '<span class="cevi-gap-text">' . esc_html( $sign . number_format_i18n( abs( $diff ), 2 ) . ' ' . $order->get_currency() . ' (' . $sign . number_format_i18n( abs( $pct ), 1 ) . ' %)' ) . '</span>';
 }
 
 /** Render the report and settings. */
@@ -287,93 +406,199 @@ function cevi_admin_page() {
 	foreach ( $orders as $order ) {
 		$verdict = CEVI_Store::verdict( $order );
 		++$count[ $verdict['status'] ];
-		$rows[] = array( $order, $verdict );
+		$rows[] = array( $order, $verdict, cevi_value_gap( $order ) );
 	}
-	$saved = get_transient( 'cevi_saved_' . get_current_user_id() );
+	$saved  = get_transient( 'cevi_saved_' . get_current_user_id() );
 	delete_transient( 'cevi_saved_' . get_current_user_id() );
+	$labels = array(
+		'ok'      => __( 'Matching', 'commerce-event-inspector' ),
+		'warn'    => __( 'With notes', 'commerce-event-inspector' ),
+		'fail'    => __( 'Not matching', 'commerce-event-inspector' ),
+		'missing' => __( 'Without purchase event', 'commerce-event-inspector' ),
+		'none'    => __( 'Not observed', 'commerce-event-inspector' ),
+	);
 	?>
 	<div class="wrap cevi-wrap">
-		<h1><?php esc_html_e( 'Commerce Event Inspector', 'commerce-event-inspector' ); ?></h1>
+		<div class="cevi-head">
+			<h1><?php esc_html_e( 'Commerce Event Inspector', 'commerce-event-inspector' ); ?></h1>
+			<?php if ( $settings['record'] ) : ?>
+				<span class="cevi-pill cevi-pill-ok"><span class="cevi-rec" aria-hidden="true"></span><?php esc_html_e( 'Recording on', 'commerce-event-inspector' ); ?></span>
+			<?php else : ?>
+				<span class="cevi-pill"><span class="dashicons dashicons-controls-pause" aria-hidden="true"></span><?php esc_html_e( 'Recording off', 'commerce-event-inspector' ); ?></span>
+			<?php endif; ?>
+			<span class="cevi-version"><?php echo esc_html( CEVI_VERSION ); ?></span>
+		</div>
+		<hr class="wp-header-end">
 		<?php if ( $saved ) : ?>
-			<div class="notice notice-success"><p><?php esc_html_e( 'Settings saved.', 'commerce-event-inspector' ); ?></p></div>
+			<div class="notice notice-success is-dismissible"><p><?php esc_html_e( 'Settings saved.', 'commerce-event-inspector' ); ?></p></div>
 		<?php endif; ?>
-		<p><?php esc_html_e( 'Do the GA4 e-commerce events of this shop match the real orders? The plugin reads what tracking plugins and tags push to the dataLayer or send with gtag() and compares it with WooCommerce: transaction ID, value, currency and items of each order, and on product, cart and checkout pages the products and prices.', 'commerce-event-inspector' ); ?></p>
+		<p class="cevi-lead"><?php esc_html_e( 'Do the GA4 e-commerce events of this shop match the real orders? The plugin reads what tracking plugins and tags push to the dataLayer or send with gtag() and compares it with WooCommerce: transaction ID, value, currency and items of each order, and on product, cart and checkout pages the products and prices.', 'commerce-event-inspector' ); ?></p>
 
-		<h2><?php esc_html_e( 'Settings', 'commerce-event-inspector' ); ?></h2>
-		<form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>">
-			<input type="hidden" name="action" value="cevi_save">
-			<?php wp_nonce_field( 'cevi_save' ); ?>
-			<p>
-				<label>
-					<input type="checkbox" name="cevi_record" value="1" <?php checked( $settings['record'] ); ?>>
-					<strong><?php esc_html_e( 'Check purchase events on the order confirmation page', 'commerce-event-inspector' ); ?></strong>
-				</label><br>
-				<span class="cevi-muted"><?php esc_html_e( 'When a customer sees the order confirmation, a small script reads the e-commerce events on that page and sends them to this site, where they are stored with the order. No cookies are set and nothing is sent to other services. Stored per view of the confirmation page: the time, whether a logged-in shop manager viewed it, and for each e-commerce event its name and format, where it was found, transaction ID, value (also as sent), currency and the number, IDs, names, prices and quantities of the items; with it a copy of the order data used for the comparison: order ID and number, status, currency, the item IDs, names, quantities and prices, and the totals.', 'commerce-event-inspector' ); ?></span>
-			</p>
-			<p>
-				<label>
-					<input type="checkbox" name="cevi_inspector" value="1" <?php checked( $mine ); ?>>
-					<strong><?php esc_html_e( 'Show the inspector panel in the shop for my account', 'commerce-event-inspector' ); ?></strong>
-				</label><br>
-				<span class="cevi-muted"><?php esc_html_e( 'While logged in, a panel lists every e-commerce event with its checks. Some tracking plugins skip logged-in shop managers; in that case the panel stays empty.', 'commerce-event-inspector' ); ?></span>
-			</p>
-			<?php submit_button( __( 'Save settings', 'commerce-event-inspector' ), 'primary', 'submit', false ); ?>
-		</form>
-
-		<h2><?php esc_html_e( 'Orders', 'commerce-event-inspector' ); ?></h2>
 		<?php if ( ! $settings['since'] ) : ?>
-			<p><?php esc_html_e( 'Recording has not been switched on yet. The report lists orders placed since then.', 'commerce-event-inspector' ); ?></p>
+			<div class="cevi-card cevi-empty-state">
+				<span class="dashicons dashicons-chart-bar" aria-hidden="true"></span>
+				<h2><?php esc_html_e( 'Orders', 'commerce-event-inspector' ); ?></h2>
+				<p><?php esc_html_e( 'Recording has not been switched on yet. The report lists orders placed since then.', 'commerce-event-inspector' ); ?></p>
+				<p class="cevi-muted"><?php esc_html_e( 'Switch on "Check purchase events on the order confirmation page" below and save. The report fills as customers see their order confirmation.', 'commerce-event-inspector' ); ?></p>
+			</div>
 		<?php else : ?>
-			<p>
-				<?php
-				echo esc_html(
-					sprintf(
-						/* translators: 1: date, 2: number of orders. */
-						_n( '%2$d order placed since %1$s or with stored observations.', '%2$d orders placed since %1$s or with stored observations.', count( $rows ), 'commerce-event-inspector' ),
-						wp_date( get_option( 'date_format' ) . ' ' . get_option( 'time_format' ), $settings['since'] ),
-						count( $rows )
-					) . ' ' . sprintf(
-						/* translators: 1: matching, 2: with notes, 3: not matching, 4: without purchase event, 5: not observed. */
-						__( 'Matching: %1$d, with notes: %2$d, not matching: %3$d, without purchase event: %4$d, not observed: %5$d.', 'commerce-event-inspector' ),
-						$count['ok'],
-						$count['warn'],
-						$count['fail'],
-						$count['missing'],
-						$count['none']
-					)
-				);
-				?>
-			</p>
-			<?php if ( $rows ) : ?>
-				<div class="cevi-table">
-					<table class="widefat striped">
+			<?php $total = count( $rows ); ?>
+			<div class="cevi-card">
+				<h2 class="cevi-card-title"><span class="dashicons dashicons-chart-pie" aria-hidden="true"></span><?php esc_html_e( 'Orders', 'commerce-event-inspector' ); ?></h2>
+				<p class="cevi-summary">
+					<?php
+					echo esc_html(
+						sprintf(
+							/* translators: 1: date, 2: number of orders. */
+							_n( '%2$d order placed since %1$s or with stored observations.', '%2$d orders placed since %1$s or with stored observations.', $total, 'commerce-event-inspector' ),
+							wp_date( get_option( 'date_format' ) . ' ' . get_option( 'time_format' ), $settings['since'] ),
+							$total
+						)
+					);
+					?>
+				</p>
+				<?php if ( $rows ) : ?>
+					<ul class="cevi-tiles">
+						<?php foreach ( $labels as $key => $label ) : ?>
+							<li>
+								<button type="button" class="cevi-tile cevi-tile-<?php echo esc_attr( $key ); ?>" data-cevi-filter="<?php echo esc_attr( $key ); ?>" aria-pressed="false" aria-controls="cevi-orders"<?php disabled( 0 === $count[ $key ] ); ?>>
+									<span class="dashicons dashicons-<?php echo esc_attr( cevi_status_icon( $key ) ); ?>" aria-hidden="true"></span>
+									<strong><?php echo esc_html( number_format_i18n( $count[ $key ] ) ); ?></strong>
+									<span><?php echo esc_html( $label ); ?></span>
+								</button>
+							</li>
+						<?php endforeach; ?>
+					</ul>
+					<?php
+					/* translators: 1: matching, 2: with notes, 3: not matching, 4: without purchase event, 5: not observed. */
+					$share = sprintf( __( 'Matching: %1$d, with notes: %2$d, not matching: %3$d, without purchase event: %4$d, not observed: %5$d.', 'commerce-event-inspector' ), $count['ok'], $count['warn'], $count['fail'], $count['missing'], $count['none'] );
+					?>
+					<div class="cevi-share" role="img" aria-label="<?php echo esc_attr( $share ); ?>">
+						<?php foreach ( $labels as $key => $label ) : ?>
+							<?php if ( $count[ $key ] ) : ?>
+								<span class="cevi-share-part cevi-share-<?php echo esc_attr( $key ); ?>" style="<?php echo esc_attr( 'flex-grow:' . (int) $count[ $key ] ); ?>" title="<?php echo esc_attr( $label . ': ' . $count[ $key ] ); ?>"></span>
+							<?php endif; ?>
+						<?php endforeach; ?>
+					</div>
+					<p class="cevi-legend" aria-hidden="true">
+						<?php foreach ( $labels as $key => $label ) : ?>
+							<?php if ( $count[ $key ] ) : ?>
+								<span><span class="cevi-dot cevi-share-<?php echo esc_attr( $key ); ?>"></span><?php echo esc_html( $label . ' ' . number_format_i18n( $count[ $key ] / $total * 100 ) . ' %' ); ?></span>
+							<?php endif; ?>
+						<?php endforeach; ?>
+					</p>
+				<?php endif; ?>
+			</div>
+
+			<?php
+			$gaps  = array_filter(
+				$rows,
+				function ( $r ) {
+					return null !== $r[2];
+				}
+			);
+			$scale = 10;
+			foreach ( $gaps as $r ) {
+				if ( null !== $r[2]['value'] && $r[2]['total'] > 0 ) {
+					$scale = max( $scale, abs( ( $r[2]['value'] - $r[2]['total'] ) / $r[2]['total'] * 100 ) );
+				}
+			}
+			?>
+			<?php if ( $gaps ) : ?>
+				<div class="cevi-card">
+					<h2 class="cevi-card-title"><span class="dashicons dashicons-image-flip-horizontal" aria-hidden="true"></span><?php esc_html_e( 'Purchase value compared with the order total', 'commerce-event-inspector' ); ?></h2>
+					<p class="cevi-muted"><?php esc_html_e( 'value of the first purchase event minus the order total including tax and shipping. Bars to the left: the event reports less, to the right: more. Notes such as "without shipping" are in the checks of each order.', 'commerce-event-inspector' ); ?></p>
+					<table class="cevi-gaps">
+						<caption class="screen-reader-text"><?php esc_html_e( 'Purchase value compared with the order total', 'commerce-event-inspector' ); ?></caption>
 						<thead><tr>
 							<th scope="col"><?php esc_html_e( 'Order', 'commerce-event-inspector' ); ?></th>
 							<th scope="col"><?php esc_html_e( 'Total', 'commerce-event-inspector' ); ?></th>
-							<th scope="col"><?php esc_html_e( 'Result', 'commerce-event-inspector' ); ?></th>
-							<th scope="col"><?php esc_html_e( 'Checks', 'commerce-event-inspector' ); ?></th>
+							<th scope="col"><?php esc_html_e( 'Difference', 'commerce-event-inspector' ); ?></th>
 						</tr></thead>
 						<tbody>
-						<?php foreach ( $rows as $row ) : ?>
-							<?php list( $order, $verdict ) = $row; ?>
+						<?php foreach ( array_slice( $gaps, 0, 20 ) as $r ) : ?>
 							<tr>
-								<td>
-									<a href="<?php echo esc_url( $order->get_edit_order_url() ); ?>">#<?php echo esc_html( $order->get_order_number() ); ?></a><br>
-									<span class="cevi-muted"><?php echo esc_html( $order->get_date_created() ? wp_date( get_option( 'date_format' ) . ' ' . get_option( 'time_format' ), $order->get_date_created()->getTimestamp() ) : '' ); ?></span>
-								</td>
-								<td><?php echo wp_kses_post( wc_price( $order->get_total(), array( 'currency' => $order->get_currency() ) ) ); ?></td>
-								<td><span class="cevi-badge cevi-badge-<?php echo esc_attr( $verdict['status'] ); ?>"><?php echo esc_html( cevi_status_label( $verdict['status'] ) ); ?></span></td>
-								<td><?php cevi_print_checks( $verdict ); ?></td>
+								<th scope="row"><a href="<?php echo esc_url( $r[0]->get_edit_order_url() ); ?>">#<?php echo esc_html( $r[0]->get_order_number() ); ?></a></th>
+								<td><?php echo wp_kses_post( wc_price( $r[0]->get_total(), array( 'currency' => $r[0]->get_currency() ) ) ); ?></td>
+								<td class="cevi-gap"><?php cevi_print_gap( $r[2], $r[0], $scale ); ?></td>
 							</tr>
 						<?php endforeach; ?>
 						</tbody>
 					</table>
 				</div>
 			<?php endif; ?>
+
+			<?php if ( $rows ) : ?>
+				<div class="cevi-card cevi-card-flat">
+					<h2 class="cevi-card-title"><span class="dashicons dashicons-list-view" aria-hidden="true"></span><?php esc_html_e( 'All orders', 'commerce-event-inspector' ); ?></h2>
+					<p class="cevi-filter-note" hidden><span class="cevi-filter-text" aria-live="polite"></span> <button type="button" class="button-link" data-cevi-filter=""><?php esc_html_e( 'Show all orders', 'commerce-event-inspector' ); ?></button></p>
+					<div class="cevi-table" id="cevi-orders">
+						<table class="widefat striped">
+							<thead><tr>
+								<th scope="col"><?php esc_html_e( 'Order', 'commerce-event-inspector' ); ?></th>
+								<th scope="col"><?php esc_html_e( 'Total', 'commerce-event-inspector' ); ?></th>
+								<th scope="col"><?php esc_html_e( 'Result', 'commerce-event-inspector' ); ?></th>
+								<th scope="col"><?php esc_html_e( 'Checks', 'commerce-event-inspector' ); ?></th>
+							</tr></thead>
+							<tbody>
+							<?php foreach ( $rows as $row ) : ?>
+								<?php
+								list( $order, $verdict ) = $row;
+								?>
+								<tr data-status="<?php echo esc_attr( $verdict['status'] ); ?>">
+									<td data-label="<?php esc_attr_e( 'Order', 'commerce-event-inspector' ); ?>">
+										<a class="cevi-order" href="<?php echo esc_url( $order->get_edit_order_url() ); ?>">#<?php echo esc_html( $order->get_order_number() ); ?></a><br>
+										<span class="cevi-muted"><?php echo esc_html( $order->get_date_created() ? wp_date( get_option( 'date_format' ) . ' ' . get_option( 'time_format' ), $order->get_date_created()->getTimestamp() ) : '' ); ?></span>
+									</td>
+									<td data-label="<?php esc_attr_e( 'Total', 'commerce-event-inspector' ); ?>"><?php echo wp_kses_post( wc_price( $order->get_total(), array( 'currency' => $order->get_currency() ) ) ); ?></td>
+									<td data-label="<?php esc_attr_e( 'Result', 'commerce-event-inspector' ); ?>"><?php cevi_print_badge( $verdict['status'] ); ?></td>
+									<td data-label="<?php esc_attr_e( 'Checks', 'commerce-event-inspector' ); ?>"><?php cevi_print_checks( $verdict ); ?></td>
+								</tr>
+							<?php endforeach; ?>
+							</tbody>
+						</table>
+					</div>
+				</div>
+			<?php else : ?>
+				<div class="cevi-card cevi-empty-state">
+					<span class="dashicons dashicons-cart" aria-hidden="true"></span>
+					<p><?php esc_html_e( 'No orders yet since recording was switched on. They appear here after the next order.', 'commerce-event-inspector' ); ?></p>
+				</div>
+			<?php endif; ?>
 		<?php endif; ?>
 
-		<h2><?php esc_html_e( 'Limits', 'commerce-event-inspector' ); ?></h2>
-		<p><?php esc_html_e( 'The plugin sees what the page pushes to the dataLayer or sends with gtag(), not whether Google Analytics received it. Ad blockers and missing consent can still stop the request. Events sent only from the server, or by a tag inside a Tag Manager container that the page does not push, are not visible. Orders without a viewed confirmation page, such as orders created in the admin, are listed as not observed. The list shows at most the latest 100 orders placed since recording was switched on and the latest 100 orders with stored observations.', 'commerce-event-inspector' ); ?></p>
+		<div class="cevi-card">
+			<h2 class="cevi-card-title"><span class="dashicons dashicons-admin-settings" aria-hidden="true"></span><?php esc_html_e( 'Settings', 'commerce-event-inspector' ); ?></h2>
+			<form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>">
+				<input type="hidden" name="action" value="cevi_save">
+				<?php wp_nonce_field( 'cevi_save' ); ?>
+				<div class="cevi-setting">
+					<label class="cevi-switch">
+						<input type="checkbox" role="switch" name="cevi_record" value="1" aria-describedby="cevi-record-help" <?php checked( $settings['record'] ); ?>>
+						<span class="cevi-switch-track" aria-hidden="true"></span>
+						<strong><?php esc_html_e( 'Check purchase events on the order confirmation page', 'commerce-event-inspector' ); ?></strong>
+					</label>
+					<details class="cevi-details" id="cevi-record-help">
+						<summary><?php esc_html_e( 'What is stored', 'commerce-event-inspector' ); ?></summary>
+						<p class="cevi-muted"><?php esc_html_e( 'When a customer sees the order confirmation, a small script reads the e-commerce events on that page and sends them to this site, where they are stored with the order. No cookies are set and nothing is sent to other services. Stored per view of the confirmation page: the time, whether a logged-in shop manager viewed it, and for each e-commerce event its name and format, where it was found, transaction ID, value (also as sent), currency and the number, IDs, names, prices and quantities of the items; with it a copy of the order data used for the comparison: order ID and number, status, currency, the item IDs, names, quantities and prices, and the totals.', 'commerce-event-inspector' ); ?></p>
+					</details>
+				</div>
+				<div class="cevi-setting">
+					<label class="cevi-switch">
+						<input type="checkbox" role="switch" name="cevi_inspector" value="1" aria-describedby="cevi-inspector-help" <?php checked( $mine ); ?>>
+						<span class="cevi-switch-track" aria-hidden="true"></span>
+						<strong><?php esc_html_e( 'Show the inspector panel in the shop for my account', 'commerce-event-inspector' ); ?></strong>
+					</label>
+					<p class="cevi-muted" id="cevi-inspector-help"><?php esc_html_e( 'While logged in, a panel lists every e-commerce event with its checks. Some tracking plugins skip logged-in shop managers; in that case the panel stays empty.', 'commerce-event-inspector' ); ?></p>
+				</div>
+				<?php submit_button( __( 'Save settings', 'commerce-event-inspector' ), 'primary', 'submit', false ); ?>
+			</form>
+		</div>
+
+		<div class="cevi-card cevi-limits">
+			<h2 class="cevi-card-title"><span class="dashicons dashicons-info-outline" aria-hidden="true"></span><?php esc_html_e( 'Limits', 'commerce-event-inspector' ); ?></h2>
+			<p><?php esc_html_e( 'The plugin sees what the page pushes to the dataLayer or sends with gtag(), not whether Google Analytics received it. Ad blockers and missing consent can still stop the request. Events sent only from the server, or by a tag inside a Tag Manager container that the page does not push, are not visible. Orders without a viewed confirmation page, such as orders created in the admin, are listed as not observed. The list shows at most the latest 100 orders placed since recording was switched on and the latest 100 orders with stored observations.', 'commerce-event-inspector' ); ?></p>
+		</div>
 	</div>
 	<?php
 }
@@ -415,7 +640,15 @@ function cevi_meta_box( $object ) {
 		return;
 	}
 	$verdict = CEVI_Store::verdict( $order );
-	echo '<p><span class="cevi-badge cevi-badge-' . esc_attr( $verdict['status'] ) . '">' . esc_html( cevi_status_label( $verdict['status'] ) ) . '</span></p>';
+	echo '<p>';
+	cevi_print_badge( $verdict['status'] );
+	echo '</p>';
+	$gap = cevi_value_gap( $order );
+	if ( $gap ) {
+		echo '<div class="cevi-gap cevi-gap-box"><span class="cevi-gap-label">' . esc_html__( 'Purchase value compared with the order total', 'commerce-event-inspector' ) . '</span>';
+		cevi_print_gap( $gap, $order, 10 );
+		echo '</div>';
+	}
 	cevi_print_checks( $verdict );
 	if ( $verdict['views'] ) {
 		/* translators: %d: number of views. */
