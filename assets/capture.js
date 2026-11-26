@@ -152,12 +152,18 @@
         }
         sent = true;
         scan();
+        // Customers send no cookies. A logged-in shop manager sends the login with a REST nonce,
+        // so the site itself can tell that the view was not a customer's.
+        const headers = {'Content-Type': 'application/json'};
+        if (C.nonce) {
+            headers['X-WP-Nonce'] = C.nonce;
+        }
         fetch(C.rest, {
             method: 'POST',
             keepalive: true,
-            credentials: 'omit',
-            headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify({order: C.order.id, key: C.order.key, staff: !!C.staff, events: found.slice(0, 20)})
+            credentials: C.nonce ? 'same-origin' : 'omit',
+            headers: headers,
+            body: JSON.stringify({order: C.order.id, key: C.order.key, events: found.slice(0, 20)})
         }).catch(function () {});
     }
 

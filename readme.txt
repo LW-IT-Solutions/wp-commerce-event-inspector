@@ -4,7 +4,7 @@ Tags: woocommerce, google analytics, ga4, ecommerce tracking, datalayer
 Requires at least: 6.5
 Tested up to: 7.2
 Requires PHP: 7.4
-Stable tag: 0.1.0
+Stable tag: 0.1.1
 License: GPL-2.0-or-later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -19,7 +19,7 @@ weeks later as revenue in reports that does not add up.
 Commerce Event Inspector reads the GA4 e-commerce events that tracking plugins and tags push to the dataLayer or send
 with gtag(), and compares them with WooCommerce:
 
-* **Purchase check (optional):** on the order confirmation page, a small script reads the events and sends them to this site, where they are stored with the order. WooCommerce > Event Inspector lists every order since recording was switched on: purchase event present or missing, pushed more than once, transaction_id against the order number, currency, value and items. For value, the report names which reading of the order total matched: with tax and shipping, without shipping, without tax, or without both. A purchase event on a failed, cancelled or still unpaid order is flagged as well; no purchase event on such an order counts as correct.
+* **Purchase check (optional):** on the order confirmation page, a small script reads the events and sends them to this site, where they are stored with the order. WooCommerce > Event Inspector lists the orders placed since recording was switched on (the latest 100) and the orders with stored observations (the latest 100): purchase event present or missing, pushed more than once, transaction_id against the order number, currency, value and items. For value, the report names which reading of the order total matched: with tax and shipping, without shipping, without tax, or without both. A purchase event on a failed, cancelled or still unpaid order is flagged as well; no purchase event on such an order counts as correct.
 * **Inspector panel:** for logged-in shop managers who switch it on, a panel in the shop lists every e-commerce event as it happens, from view_item to purchase, with checks against the GA4 rules and against the product, cart or order on the page: item IDs matched to SKU, product ID or variation ID, prices with or without tax, quantities and totals.
 * **Order screen:** the result of each order also appears in a box on the order screen.
 
@@ -29,16 +29,26 @@ or code in a theme. Events in the older Universal Analytics format are recognise
 = Privacy =
 
 Recording is off until it is switched on. When it is on, the order confirmation page sends the events it found to this
-site only. Stored with the order are event names, transaction ID, value, currency and the IDs, names, prices and
-quantities of the items. No cookies are set, no customer data is read from the events, and nothing is sent to other
-services. A suggested text for the privacy policy is added to the privacy policy guide. Uninstalling removes the setting
-and all stored observations.
+site only, once per page view. Stored with the order, per view of the confirmation page: the time, whether a logged-in
+shop manager viewed it, and for each e-commerce event its name and format, where it was found (gtag or the name of the
+dataLayer array), transaction ID, value (also as sent), currency and the number, IDs, names, prices and quantities of
+the items; with it a copy of the order data used for the comparison: order ID and number, status, currency, the item
+IDs (SKU, product and variation ID), names, quantities and prices, and the totals. No cookies are set, no customer data
+is read from the events, and nothing is sent to other services. A suggested text for the privacy policy is added to the
+privacy policy guide. Uninstalling removes the settings and all stored observations.
+
+The confirmation page sends to the REST route cevi/v1/observe of this site. The route needs no login, because customers
+are usually not logged in. It accepts data only while recording is on, only for an order whose order key matches (the
+key is known only to that order's confirmation page), only for two days after the order was placed and at most five
+times per order. Customers' requests carry no cookies; a logged-in shop manager's request carries the login with a
+REST nonce, so that the report can mark views by shop managers.
 
 = Limits =
 
 * The plugin sees what the page pushes, not whether Google Analytics received it. Ad blockers or missing consent can still stop the request, and events sent only from the server are not visible.
 * Read are window.dataLayer, other arrays whose name starts with dataLayer (PixelYourSite uses dataLayerPYS) and names that a Tag Manager or gtag.js loader on the page sets with l=. Events kept elsewhere are not visible.
 * Orders whose confirmation page is not viewed while recording is on, such as orders created in the admin, are listed as not observed. Observations are accepted for two days after an order is placed, and at most five per order.
+* The report lists at most the latest 100 orders placed since recording was switched on and the latest 100 orders with stored observations.
 * Per event, the first 100 items are stored and compared; for larger orders the report says so instead of listing the rest as missing.
 
 == Installation ==
@@ -70,6 +80,12 @@ orders created in the admin or by payment providers that do not return the custo
 2. The inspector panel on an order confirmation page: the purchase event compared with the order, item by item.
 
 == Changelog ==
+
+= 0.1.1 =
+* The observation endpoint checks recording, order, order key and order age in its permission check and declares its parameters, which are validated and sanitized where they are read.
+* Views by shop managers are recognised from their login instead of a value sent by the page.
+* Readme, settings and privacy texts list exactly what is stored and that the report shows at most the latest 100 orders.
+* Uninstalling also removes the short-lived "settings saved" notices.
 
 = 0.1.0 =
 * First version: purchase check on the order confirmation page with order report and order screen box, inspector panel for shop managers.

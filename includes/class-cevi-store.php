@@ -57,51 +57,128 @@ class CEVI_Store {
 			array(
 				'methods'             => 'POST',
 				'callback'            => array( __CLASS__, 'observe' ),
-				// Customers are not logged in. Access is checked in the callback with the order key,
-				// which only the order confirmation page of that order knows.
-				'permission_callback' => '__return_true',
+				// Customers are not logged in, so access depends on the order key, which only the
+				// order confirmation page of that order knows. See can_observe().
+				'permission_callback' => array( __CLASS__, 'can_observe' ),
+				'args'                => array(
+					'order'  => array(
+						'required'          => true,
+						'validate_callback' => array( __CLASS__, 'valid_order_id' ),
+						'sanitize_callback' => 'absint',
+					),
+					'key'    => array(
+						'required'          => true,
+						'validate_callback' => array( __CLASS__, 'valid_order_key' ),
+						'sanitize_callback' => 'sanitize_text_field',
+					),
+					'events' => array(
+						'default'           => array(),
+						'validate_callback' => array( __CLASS__, 'valid_events' ),
+						'sanitize_callback' => array( __CLASS__, 'clean_events' ),
+					),
+				),
 			)
 		);
 	}
 
 	/**
-	 * Store one observation.
+	 * Only a plain positive number counts as an order ID; absint() alone would turn "-12" or "12abc" into 12.
 	 *
-	 * @param WP_REST_Request $request Request.
-	 * @return WP_REST_Response
+	 * @param mixed $value Order ID as sent.
+	 * @return bool
 	 */
-	public static function observe( $request ) {
-		$body  = $request->get_json_params();
-		$deny  = new WP_REST_Response( array( 'stored' => false ), 403 );
-		// Only a plain positive number counts as an order ID; absint() would turn "-12" or "12abc" into 12.
-		$id    = is_array( $body ) && isset( $body['order'] ) && is_scalar( $body['order'] ) && ctype_digit( (string) $body['order'] ) ? (int) $body['order'] : 0;
+	public static function valid_order_id( $value ) {
+		return is_scalar( $value ) && ctype_digit( (string) $value ) && (int) $value > 0;
+	}
+
+	/**
+	 * An order key is a non-empty string of at most 200 characters.
+	 *
+	 * @param mixed $value Order key as sent.
+	 * @return bool
+	 */
+	public static function valid_order_key( $value ) {
+		return is_string( $value ) && '' !== $value && strlen( $value ) <= 200;
+	}
+
+	/**
+	 * The events are a list.
+	 *
+	 * @param mixed $value Events as sent.
+	 * @return bool
+	 */
+	public static function valid_events( $value ) {
+		return is_array( $value );
+	}
+
+	/**
+	 * The first 20 events, each reduced to known fields with the expected types; unknown events are dropped.
+	 *
+	 * @param mixed $value Events as sent.
+	 * @return array
+	 */
+	public static function clean_events( $value ) {
+		$events = array();
+		foreach ( array_slice( is_array( $value ) ? $value : array(), 0, 20 ) as $raw ) {
+			$event = self::clean_event( $raw );
+			if ( $event ) {
+				$events[] = $event;
+			}
+		}
+		return $events;
+	}
+
+	/**
+	 * Access check for the endpoint: recording is on, the ID belongs to an order (not a refund),
+	 * the order key matches and the order is at most two days old.
+	 *
+	 * @param WP_REST_Request $request Request with validated and sanitized parameters.
+	 * @return true|WP_Error
+	 */
+	public static function can_observe( $request ) {
+		$deny = new WP_Error( 'cevi_forbidden', __( 'Not accepted.', 'commerce-event-inspector' ), array( 'status' => 403 ) );
+		if ( ! self::settings()['record'] ) {
+			return $deny;
+		}
+		$id    = absint( $request->get_param( 'order' ) );
+		$key   = (string) $request->get_param( 'key' );
 		$order = $id > 0 ? wc_get_order( $id ) : false;
-		if ( ! self::settings()['record'] || ! $order || ! isset( $body['key'] ) || ! is_string( $body['key'] ) || ! hash_equals( $order->get_order_key(), $body['key'] ) ) {
+		if ( ! $order instanceof WC_Order || '' === $key || ! hash_equals( (string) $order->get_order_key(), $key ) ) {
 			return $deny;
 		}
 		$created = $order->get_date_created();
 		if ( ! $created || time() - $created->getTimestamp() > self::MAX_AGE ) {
 			return $deny;
 		}
+		return true;
+	}
+
+	/**
+	 * Store one observation. can_observe() has checked access, the parameters are validated and sanitized.
+	 *
+	 * @param WP_REST_Request $request Request.
+	 * @return WP_REST_Response
+	 */
+	public static function observe( $request ) {
+		$order = wc_get_order( absint( $request->get_param( 'order' ) ) );
+		if ( ! $order instanceof WC_Order ) {
+			return new WP_REST_Response( array( 'stored' => false ), 403 );
+		}
 		$full = new WP_REST_Response( array( 'stored' => false ), 200 );
 		$order->read_meta_data( true );
 		if ( count( self::rows( $order ) ) >= self::MAX_OBSERVATIONS ) {
 			return $full;
 		}
-		$events = array();
-		foreach ( array_slice( isset( $body['events'] ) && is_array( $body['events'] ) ? $body['events'] : array(), 0, 20 ) as $raw ) {
-			$event = self::clean_event( $raw );
-			if ( $event ) {
-				$events[] = $event;
-			}
-		}
+		$events = $request->get_param( 'events' );
+		$events = is_array( $events ) ? $events : array();
 		// One meta row per observation: requests that arrive at the same time add rows instead of overwriting one list.
 		$before = wp_list_pluck( self::rows( $order ), 'id' );
 		$order->add_meta_data(
 			self::META,
 			array(
 				'time'   => time(),
-				'staff'  => ! empty( $body['staff'] ),
+				// Shop managers send their login with a REST nonce; customers send no cookies.
+				'staff'  => current_user_can( 'manage_woocommerce' ),
 				'events' => $events,
 				'order'  => CEVI_Context::order( $order ),
 			)

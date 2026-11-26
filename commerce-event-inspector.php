@@ -2,7 +2,7 @@
 /**
  * Plugin Name: Commerce Event Inspector
  * Description: Checks the GA4 e-commerce events your WooCommerce shop pushes against the real orders, cart and products: missing or duplicate purchase events, wrong transaction IDs, values, currencies and items.
- * Version: 0.1.0
+ * Version: 0.1.1
  * Requires at least: 6.5
  * Requires PHP: 7.4
  * Requires Plugins: woocommerce
@@ -76,9 +76,9 @@ function cevi_enqueue() {
 	if ( ! $record && ! cevi_inspector_on() ) {
 		return;
 	}
-	wp_enqueue_script( 'cevi-capture', plugins_url( 'assets/capture.js', CEVI_FILE ), array(), '0.1.0', true );
+	wp_enqueue_script( 'cevi-capture', plugins_url( 'assets/capture.js', CEVI_FILE ), array(), '0.1.1', true );
 	if ( cevi_inspector_on() ) {
-		wp_enqueue_style( 'cevi-inspector', plugins_url( 'assets/inspector.css', CEVI_FILE ), array(), '0.1.0' );
+		wp_enqueue_style( 'cevi-inspector', plugins_url( 'assets/inspector.css', CEVI_FILE ), array(), '0.1.1' );
 	}
 }
 
@@ -104,7 +104,8 @@ function cevi_localize() {
 		array(
 			'rest'      => rest_url( 'cevi/v1/observe' ),
 			'currency'  => get_woocommerce_currency(),
-			'staff'     => current_user_can( 'manage_woocommerce' ),
+			// Lets the report tell views by shop managers from customer views; customers get no nonce.
+			'nonce'     => current_user_can( 'manage_woocommerce' ) ? wp_create_nonce( 'wp_rest' ) : '',
 			'inspector' => cevi_inspector_on(),
 			'order'     => $record ? array(
 				'id'  => $order->get_id(),
@@ -194,7 +195,7 @@ function cevi_admin_menu() {
 function cevi_admin_assets( $hook ) {
 	$screen = get_current_screen();
 	if ( 'woocommerce_page_commerce-event-inspector' === $hook || ( $screen && in_array( $screen->id, array( 'shop_order', 'woocommerce_page_wc-orders' ), true ) ) ) {
-		wp_enqueue_style( 'cevi-admin', plugins_url( 'assets/admin.css', CEVI_FILE ), array(), '0.1.0' );
+		wp_enqueue_style( 'cevi-admin', plugins_url( 'assets/admin.css', CEVI_FILE ), array(), '0.1.1' );
 	}
 }
 
@@ -307,7 +308,7 @@ function cevi_admin_page() {
 					<input type="checkbox" name="cevi_record" value="1" <?php checked( $settings['record'] ); ?>>
 					<strong><?php esc_html_e( 'Check purchase events on the order confirmation page', 'commerce-event-inspector' ); ?></strong>
 				</label><br>
-				<span class="cevi-muted"><?php esc_html_e( 'When a customer sees the order confirmation, a small script reads the e-commerce events on that page and sends them to this site, where they are stored with the order. No cookies, no requests to other services; only event names, transaction IDs, amounts, currencies and the IDs, names, prices and quantities of the items are kept.', 'commerce-event-inspector' ); ?></span>
+				<span class="cevi-muted"><?php esc_html_e( 'When a customer sees the order confirmation, a small script reads the e-commerce events on that page and sends them to this site, where they are stored with the order. No cookies are set and nothing is sent to other services. Stored per view of the confirmation page: the time, whether a logged-in shop manager viewed it, and for each e-commerce event its name and format, where it was found, transaction ID, value (also as sent), currency and the number, IDs, names, prices and quantities of the items; with it a copy of the order data used for the comparison: order ID and number, status, currency, the item IDs, names, quantities and prices, and the totals.', 'commerce-event-inspector' ); ?></span>
 			</p>
 			<p>
 				<label>
@@ -328,7 +329,7 @@ function cevi_admin_page() {
 				echo esc_html(
 					sprintf(
 						/* translators: 1: date, 2: number of orders. */
-						_n( '%2$d order placed since %1$s or observed since then.', '%2$d orders placed since %1$s or observed since then.', count( $rows ), 'commerce-event-inspector' ),
+						_n( '%2$d order placed since %1$s or with stored observations.', '%2$d orders placed since %1$s or with stored observations.', count( $rows ), 'commerce-event-inspector' ),
 						wp_date( get_option( 'date_format' ) . ' ' . get_option( 'time_format' ), $settings['since'] ),
 						count( $rows )
 					) . ' ' . sprintf(
@@ -372,7 +373,7 @@ function cevi_admin_page() {
 		<?php endif; ?>
 
 		<h2><?php esc_html_e( 'Limits', 'commerce-event-inspector' ); ?></h2>
-		<p><?php esc_html_e( 'The plugin sees what the page pushes to the dataLayer or sends with gtag(), not whether Google Analytics received it. Ad blockers and missing consent can still stop the request. Events sent only from the server, or by a tag inside a Tag Manager container that the page does not push, are not visible. Orders without a viewed confirmation page, such as orders created in the admin, are listed as not observed.', 'commerce-event-inspector' ); ?></p>
+		<p><?php esc_html_e( 'The plugin sees what the page pushes to the dataLayer or sends with gtag(), not whether Google Analytics received it. Ad blockers and missing consent can still stop the request. Events sent only from the server, or by a tag inside a Tag Manager container that the page does not push, are not visible. Orders without a viewed confirmation page, such as orders created in the admin, are listed as not observed. The list shows at most the latest 100 orders placed since recording was switched on and the latest 100 orders with stored observations.', 'commerce-event-inspector' ); ?></p>
 	</div>
 	<?php
 }
@@ -383,8 +384,10 @@ function cevi_handle_save() {
 		wp_die( esc_html__( 'You do not have permission to change these settings.', 'commerce-event-inspector' ), 403 );
 	}
 	check_admin_referer( 'cevi_save' );
-	CEVI_Store::set_record( ! empty( $_POST['cevi_record'] ) );
-	if ( empty( $_POST['cevi_inspector'] ) ) {
+	$record    = isset( $_POST['cevi_record'] ) && '1' === sanitize_text_field( wp_unslash( $_POST['cevi_record'] ) );
+	$inspector = isset( $_POST['cevi_inspector'] ) && '1' === sanitize_text_field( wp_unslash( $_POST['cevi_inspector'] ) );
+	CEVI_Store::set_record( $record );
+	if ( ! $inspector ) {
 		delete_user_meta( get_current_user_id(), 'cevi_inspector' );
 	} else {
 		update_user_meta( get_current_user_id(), 'cevi_inspector', 1 );
@@ -427,6 +430,6 @@ function cevi_privacy_text() {
 	}
 	wp_add_privacy_policy_content(
 		__( 'Commerce Event Inspector', 'commerce-event-inspector' ),
-		'<p>' . esc_html__( 'When checking of purchase events is switched on, the order confirmation page reads the analytics events this site prepares for the order and sends them to this site. They are stored with the order: event names, transaction ID, value, currency and the IDs, names, prices and quantities of the items. No cookies are set and nothing is sent to other services. The data is deleted with the order or when the plugin is uninstalled.', 'commerce-event-inspector' ) . '</p>'
+		'<p>' . esc_html__( 'When checking of purchase events is switched on, the order confirmation page reads the analytics events this site prepares for the order and sends them to this site. They are stored with the order, per view of the confirmation page: the time, whether a logged-in shop manager viewed it, and for each e-commerce event its name and format, where it was found, transaction ID, value (also as sent), currency and the number, IDs, names, prices and quantities of the items; with it a copy of the order data used for the comparison: order ID and number, status, currency, the item IDs, names, quantities and prices, and the totals. No cookies are set and nothing is sent to other services. The data is deleted with the order or when the plugin is uninstalled.', 'commerce-event-inspector' ) . '</p>'
 	);
 }
