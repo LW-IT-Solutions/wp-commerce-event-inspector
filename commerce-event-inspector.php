@@ -2,7 +2,7 @@
 /**
  * Plugin Name: Commerce Event Inspector
  * Description: Checks the GA4 e-commerce events your WooCommerce shop pushes against the real orders, cart and products: missing or duplicate purchase events, wrong transaction IDs, values, currencies and items.
- * Version: 0.3.0
+ * Version: 0.3.1
  * Requires at least: 6.5
  * Requires PHP: 7.4
  * Requires Plugins: woocommerce
@@ -21,7 +21,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 define( 'CEVI_FILE', __FILE__ );
-define( 'CEVI_VERSION', '0.3.0' );
+define( 'CEVI_VERSION', '0.3.1' );
 require_once __DIR__ . '/includes/class-cevi-context.php';
 require_once __DIR__ . '/includes/class-cevi-store.php';
 
@@ -716,7 +716,7 @@ function cevi_admin_page() {
 			<?php if ( $gaps ) : ?>
 				<div class="cevi-card">
 					<h2 class="cevi-card-title"><span class="dashicons dashicons-image-flip-horizontal" aria-hidden="true"></span><?php esc_html_e( 'Purchase value compared with the order total', 'commerce-event-inspector' ); ?></h2>
-					<p class="cevi-muted"><?php esc_html_e( 'value of the first purchase event minus the order total including tax and shipping. Bars to the left: the event reports less, to the right: more. Notes such as "without shipping" are in the checks of each order.', 'commerce-event-inspector' ); ?></p>
+					<p class="cevi-muted"><?php esc_html_e( 'Difference: the value parameter of the first purchase event minus the order total including tax and shipping. Bars to the left: the event reports less, to the right: more. Notes such as "without shipping" are in the checks of each order.', 'commerce-event-inspector' ); ?></p>
 					<table class="cevi-gaps">
 						<caption class="screen-reader-text"><?php esc_html_e( 'Purchase value compared with the order total', 'commerce-event-inspector' ); ?></caption>
 						<thead><tr>

@@ -4,7 +4,7 @@ Tags: woocommerce, google analytics, ga4, ecommerce tracking, datalayer
 Requires at least: 6.5
 Tested up to: 7.2
 Requires PHP: 7.4
-Stable tag: 0.3.0
+Stable tag: 0.3.1
 License: GPL-2.0-or-later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -80,6 +80,9 @@ orders created in the admin or by payment providers that do not return the custo
 2. The inspector panel on an order confirmation page: the purchase event compared with the order, item by item.
 
 == Changelog ==
+
+= 0.3.1 =
+* Report: the explanation under "Purchase value compared with the order total" is a complete sentence.
 
 = 0.3.0 =
 * Report: a status ring with the share of matching orders next to the result tiles; its arcs filter the order list like the tiles and explain themselves on hover and keyboard focus.
