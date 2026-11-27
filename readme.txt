@@ -4,7 +4,7 @@ Tags: woocommerce, google analytics, ga4, ecommerce tracking, datalayer
 Requires at least: 6.5
 Tested up to: 7.2
 Requires PHP: 7.4
-Stable tag: 0.2.0
+Stable tag: 0.3.0
 License: GPL-2.0-or-later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -80,6 +80,15 @@ orders created in the admin or by payment providers that do not return the custo
 2. The inspector panel on an order confirmation page: the purchase event compared with the order, item by item.
 
 == Changelog ==
+
+= 0.3.0 =
+* Report: a status ring with the share of matching orders next to the result tiles; its arcs filter the order list like the tiles and explain themselves on hover and keyboard focus.
+* New chart "Orders per day" for the last 14 days, stacked by result; selecting a day shows its orders.
+* Order list: search with highlighted hits (press "/" to search), combinable with the result and day filters.
+* Each observed order can show the purchase event and the order side by side, with differing fields marked.
+* "Copy problems as text" copies the problems and notes of the listed orders, for example for a ticket.
+* Numbers count up and bars grow once when the report opens; with reduced motion everything appears at once.
+* No change to what is read, stored or sent.
 
 = 0.2.0 =
 * Report: a status badge for recording, tiles with the number of orders per result that filter the order list, and a bar with the share of each result.
